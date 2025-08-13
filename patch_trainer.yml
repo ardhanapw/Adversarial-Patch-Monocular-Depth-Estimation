@@ -1,7 +1,7 @@
 dataset:
   dataset_path: datasets/kitti_test/images
-  batch_size: 4
-  num_workers: 2
+  batch_size: 16
+  num_workers: 4
 
 model:
   model_name: monodepth2
@@ -20,19 +20,19 @@ lists:
 patch:
   resolution: 256
   patch_augmentation:
-    brightness: 0.2
+    brightness: 0.1
     contrast: 0.1
   scene_augmentation:
-    brightness: 0.2
+    brightness: 0.1
     contrast: 0.1
 
   loss_weight:
     disp_loss: 1
-    nps_loss: 1
-    tv_loss: 1
+    nps_loss: 0.01
+    tv_loss: 2.5
 
 hyperparameter:
-  num_epoch: 40
+  num_epoch: 5
   learning_rate: 0.01
 
 device: cuda:0
