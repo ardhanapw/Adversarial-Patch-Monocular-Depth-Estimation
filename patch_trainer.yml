@@ -8,6 +8,7 @@ model:
   model_path: weights/monodepth2/mono_640x192
 
 log:
+  comet_ml_credentials: comet_ml_cred.json
   patch_checkpoint_dir: destination/checkpoints
   tensorboard_dir: destination/runs/train_adversarial
   log_interval: 2000
