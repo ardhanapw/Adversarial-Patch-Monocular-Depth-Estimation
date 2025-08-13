@@ -1,0 +1,37 @@
+dataset:
+  dataset_path: datasets/kitti_test/images
+  batch_size: 4
+  num_workers: 2
+
+model:
+  model_name: monodepth2
+  model_path: weights/monodepth2/mono_640x192
+
+log:
+  patch_checkpoint_dir: destination/checkpoints
+  tensorboard_dir: destination/runs/train_adversarial
+  log_interval: 2000
+
+lists:
+  30_rgb_triplets_path: lists/printable30values.txt 
+  train_list: lists/train_list.txt
+
+patch:
+  resolution: 256
+  patch_augmentation:
+    brightness: 0.2
+    contrast: 0.1
+  scene_augmentation:
+    brightness: 0.2
+    contrast: 0.1
+
+  loss_weight:
+    disp_loss: 1
+    nps_loss: 1
+    tv_loss: 1
+
+hyperparameter:
+  num_epoch: 40
+  learning_rate: 0.01
+
+device: cuda:0
