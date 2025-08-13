@@ -23,18 +23,18 @@ def main():
     #arg parser and file config
     args = parser.parse_args()
     cfg = load_yaml(args.config_path)
-    print(cfg)
+    #print(cfg)
     
     #create destination directory
     os.makedirs(cfg["log"]["tensorboard_dir"], exist_ok=True)
     os.makedirs(cfg["log"]["patch_checkpoint_dir"], exist_ok=True)
     
     #Comet ML
-    writer = utils.logger.start_comet_ml(cfg['log']['comet_ml_credentials'], cfg['model']['model_name'])
+    experiment = utils.logger.start_comet_ml(cfg['log']['comet_ml_credentials'], cfg['model']['model_name'])
     
     #Tensorboard
     writer = utils.logger.init_tensorboard(cfg['log']['tensorboard_dir'])
-    for key, value in vars(args).items():
+    for key, value in cfg.items():
         writer.add_text(key, str(value))
     
     #initialize device

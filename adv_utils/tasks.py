@@ -70,8 +70,8 @@ class AdvPatchTask:
                 adv_patch,
                 patch_masks,
                 predicted_disp,
-                torch.ones_like(predicted_disp), #zero disparity means
-            )
+                torch.full_like(predicted_disp, 1e-6), #zero target disparity means far away object, vice versa
+            ) #avoid zero or one target_disp on BCE loss
 
             return {
                 "loss": losses,
