@@ -18,6 +18,7 @@ lists:
   train_list: lists/train_list.txt
 
 patch:
+  target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:
     brightness: 0.1
@@ -27,9 +28,9 @@ patch:
     contrast: 0.1
 
   loss_weight:
-    disp_loss: 1
-    nps_loss: 0.01
-    tv_loss: 2.5
+    disp_loss: 2
+    nps_loss: 1
+    tv_loss: 0.5
 
 hyperparameter:
   num_epoch: 5

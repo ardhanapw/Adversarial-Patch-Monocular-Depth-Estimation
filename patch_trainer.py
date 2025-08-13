@@ -31,6 +31,7 @@ def main():
     
     #Comet ML
     experiment = utils.logger.start_comet_ml(cfg['log']['comet_ml_credentials'], cfg['model']['model_name'])
+    experiment.log_text(cfg, step=0)
     
     #Tensorboard
     writer = utils.logger.init_tensorboard(cfg['log']['tensorboard_dir'])
@@ -106,7 +107,8 @@ def main():
         loss=adversarial_loss,
         adv_patch=adv_patch_cpu,
         output_augmentation=output_augmentation,
-        device=device
+        device=device,
+        target_disp=cfg['patch']['target_disp_sigmoid']
     )
     
     #adv_patch_trainer.visualize(train_loader)
