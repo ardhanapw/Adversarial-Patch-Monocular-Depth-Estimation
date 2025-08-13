@@ -29,7 +29,8 @@ class AdvPatchTask:
         loss: AdversarialLoss=None,
         adv_patch=None,
         output_augmentation=None,
-        device=None
+        device=None,
+        target_disp: float=0.999999
     ):
         self.optimizer = optimizer
         self.mde_model = mde_model
@@ -37,6 +38,7 @@ class AdvPatchTask:
         self.adv_patch = adv_patch
         self.output_augmentation = output_augmentation
         self.device = device
+        self.target_disp = target_disp
         
     def forward(
         self,
@@ -70,7 +72,7 @@ class AdvPatchTask:
                 adv_patch,
                 patch_masks,
                 predicted_disp,
-                torch.full_like(predicted_disp, 1e-6), #zero target disparity means far away object, vice versa
+                torch.full_like(predicted_disp, self.target_disp), #zero target disparity means far away object, vice versa
             ) #avoid zero or one target_disp on BCE loss
 
             return {
@@ -135,6 +137,7 @@ class AdvPatchTask:
             print('Disparity loss: ', ep_disp_loss)
             print('NPS loss: ', ep_nps_loss)
             print('TV loss: ', ep_tv_loss)
+            print('===============================')
             np.save(patch_export_path + '/epoch_{}_patch.npy'.format(str(epoch)), self.adv_patch.data.detach().cpu().numpy())
             np.save(patch_export_path + '/epoch_{}_mask.npy'.format(str(epoch)), results['patch_masks'].data.detach().cpu().numpy())
     def train_old(

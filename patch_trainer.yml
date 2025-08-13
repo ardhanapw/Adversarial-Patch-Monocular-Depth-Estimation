@@ -4,8 +4,8 @@ dataset:
   num_workers: 4
 
 model:
-  model_name: monodepth2
-  model_path: weights/monodepth2/mono_640x192
+  model_name: depth_hints
+  model_path: weights/depth_hints/stereo_640x192_resnet50
 
 log:
   comet_ml_credentials: comet_ml_cred.json
