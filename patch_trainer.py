@@ -45,13 +45,6 @@ def main():
     model_name, model_path = cfg['model']['model_name'], cfg['model']['model_path']
     initialize_model = load_models(model_name, model_path, device)
     
-    #inference test
-    #img = Image.open('sample for inference/test_scene1.jpg')
-    #prediction = initialize_model.predict(img, (img.size[1], img.size[0])) #W, H in PIL, but torch expects H, W
-    #print(prediction) 
-    #initialize_model.plot(img, prediction, save=True, save_path='sample for inference/test_scene1_res.jpg')
-    
-    
     #dataloader and augmentation
     train_transform = transformer.Compose([
         transformer.RandomHorizontalFlip(),
