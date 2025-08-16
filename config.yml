@@ -1,7 +1,8 @@
 dataset:
+  eval_path: datasets/KITTI_TA_test_split
   dataset_path: datasets/kitti_test/images
-  batch_size: 16
-  num_workers: 4
+  batch_size: 4
+  num_workers: 2
 
 model:
   model_name: lite_mono
@@ -16,8 +17,10 @@ log:
 lists:
   30_rgb_triplets_path: lists/printable30values.txt 
   train_list: lists/train_list.txt
+  eval_list: lists/test_list_12.txt
 
 patch:
+  path: patch-4358-far.jpg
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:
