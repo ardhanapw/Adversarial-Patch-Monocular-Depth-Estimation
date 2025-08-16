@@ -22,5 +22,9 @@ class ModelMDE(ABC):
         pass
     
     @abstractmethod
-    def predict(self, tensor_images, original_shape, **kwargs):
+    def predict(self, tensor_images, **kwargs):
+        pass
+    
+    @abstractmethod
+    def plot(self, image, prediction, save=False, save_path=None):
         pass

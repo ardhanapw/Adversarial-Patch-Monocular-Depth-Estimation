@@ -3,6 +3,14 @@ import os
 import numpy as np
 from torch.utils.data import Dataset
 import random
+from PIL import Image
+from torchvision import transforms as T
+
+def load_patch_from_img(path):
+    #RGB patch from image
+    img = Image.open(path).convert('RGB')
+    patch = T.ToTensor()(img)
+    return patch
 
 class BaseDataset(Dataset):
     def __init__(self, image_list_file):
@@ -18,9 +26,6 @@ class BaseDataset(Dataset):
 
     def load_image(self, path):
         img = cv2.imread(path)
-        #if img is None:
-        #    print("{} not found".format(path))
-        #    raise Exception("If the extension is different, set an argumentthe \"extension\" when you call dataloaders \"e.g. LoadFromImageFile\"")
         return img
 
     def resize_img(self, img, width, height):

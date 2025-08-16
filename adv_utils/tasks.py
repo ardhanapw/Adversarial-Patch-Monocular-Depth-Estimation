@@ -17,6 +17,7 @@ from adv_utils.loss import AdversarialLoss
 from models.model_mde import ModelMDE
 
 from adv_utils.disp_converter import disp_to_depth
+from utils.original_kitti_dataloader import batch_post_process_disparity, compute_errors
 from adv_utils.patch import apply_patch
 from utils.format_time import format_time
 
@@ -39,6 +40,33 @@ class AdvPatchTask:
         self.output_augmentation = output_augmentation
         self.device = device
         self.target_disp = target_disp
+    
+    def forward_eval(
+        self,
+        batch,
+        adv_patch=None
+    ):
+        images = batch[("color", 0, 0)].to(self.device)
+        
+        current_batch_size = images.shape[0]
+        
+        #print(images.shape)
+        #print("forward eval")
+        #print(adv_patch == None)
+        
+        if adv_patch is not None:
+            #apply patch
+            final_images, patch_masks = apply_patch(
+                adv_patch, images, current_batch_size
+            )
+        
+            _, output = self.mde_model.predict(final_images, return_raw=True)
+            
+            return final_images, output
+        
+        _, output = self.mde_model.predict(images, return_raw=True)
+        
+        return output
         
     def forward(
         self,
@@ -48,6 +76,9 @@ class AdvPatchTask:
         adversarial_losses: Optional[AdversarialLoss] = None, 
     ):
         rgb = batch['left'].to(self.device)
+        
+        print(rgb.shape)
+        print("forward")
 
         current_batch_size = rgb.shape[0]
 
@@ -140,56 +171,83 @@ class AdvPatchTask:
             print('===============================')
             np.save(patch_export_path + '/epoch_{}_patch.npy'.format(str(epoch)), self.adv_patch.data.detach().cpu().numpy())
             np.save(patch_export_path + '/epoch_{}_mask.npy'.format(str(epoch)), results['patch_masks'].data.detach().cpu().numpy())
-    def train_old(
+    
+    def evaluate(
         self,
-        epochs:int,
-        dataset,
-        train_total_batch,
-        val_total_batch,
-        log_prediction_every:int,
-        log_name:str
+        eval_dataset
     ):
-        # Check if direectory is exist or not, if ot make dirs
-        dir_path = os.path.join('log', log_name)
-        if os.path.exists(dir_path) is False:
-            os.makedirs(dir_path)
+        #min and max depth of KITTI dataset
+        MIN_DEPTH = 1e-3
+        MAX_DEPTH = 8e+1
         
-        mean_value_train_list, mean_value_eval_list = [], []
+        predicted_depths = []
+        gt_depths = []
         
-        for epoch in range(epochs):
-            mean_value_train, mean_value_eval = 0, 0
-            step_train, step_val = 0, 0
-            # Train iteration
-            with tqdm(
-                dataset['train'], total=train_total_batch, desc=f"Train Epoch {epoch + 1}/{epochs}"
-            ) as train_pbar:
-                for batch in train_pbar:
-                    self.optimizer.zero_grad()
-
-                    results = self.forward('predict', batch, self.adv_patch, self.loss)
-
-                    # Backpropagate the loss
-                    results['loss']["total_loss"].backward()
-                    self.optimizer.step()
-
-                    self.adv_patch.data.clamp_(0, 1)
-
-                    # Update the progress bar
-                    train_pbar.set_postfix(
-                        {
-                            key: value.item() if isinstance(value, torch.Tensor) else value
-                            for key, value in results['loss'].items()
-                            if 'loss' in key
-                        }
-                    )
-
-                # Append train log
-                mean_value_train_list.append(mean_value_train/step_train)
+        with torch.no_grad():
+            for batch in eval_dataset:
+                _, predicted_disp = self.forward_eval(batch, self.adv_patch)
+                print(torch.mean(predicted_disp[("disp", 0)]))
+                #print(batch['depth_gt'].shape)
+                gt_depths.append(batch['depth_gt'].detach().cpu()[:, 0].numpy())
+                predicted_depth, _ = disp_to_depth(predicted_disp[("disp", 0)], MIN_DEPTH, MAX_DEPTH)
+                predicted_depth = predicted_depth.detach().cpu()[:, 0].numpy()
                 
-                # Save the texture as image
-                Image.fromarray((self.adv_patch.permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)).save(
-                    os.path.join(dir_path, f"texture_epoch_{epoch}.png")
-                )
+                #post processing (refer to monodepth)
+                #print(predicted_depth.shape)
+                #N = predicted_depth.shape[0] // 2
+                #predicted_depth = batch_post_process_disparity(predicted_depth[:N], predicted_depth[N:, :, ::-1])
+                predicted_depths.append(predicted_depth)
+        
+        predicted_depths = np.concatenate(predicted_depths)
+        gt_depths = np.concatenate(gt_depths)
+        
+        #print(predicted_depths)
+        #print(predicted_depths.shape)
+        #print(gt_depths.shape)
+        
+        errors = []
+        ratios = []
+        
+        for i in range(predicted_depths.shape[0]):
+
+            gt_depth = gt_depths[i]
+            gt_height, gt_width = gt_depth.shape[:2]
+
+            pred_depth = predicted_depths[i]
+            pred_depth = cv2.resize(pred_depth, (gt_width, gt_height))
+            pred_depth = 1 / pred_depth
+
+            mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
+
+            crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
+                            0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
+            crop_mask = np.zeros(mask.shape)
+            crop_mask[crop[0]:crop[1], crop[2]:crop[3]] = 1
+            mask = np.logical_and(mask, crop_mask)
+
+            pred_depth = pred_depth[mask]
+            gt_depth = gt_depth[mask]
+
+            pred_depth *= float(1)
+            ratio = np.median(gt_depth) / np.median(pred_depth)
+            ratios.append(ratio)
+            pred_depth *= ratio
+
+            pred_depth[pred_depth < MIN_DEPTH] = MIN_DEPTH
+            pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
+
+            errors.append(compute_errors(gt_depth, pred_depth))
+            
+            ratios_1 = np.array(ratios)
+            med = np.median(ratios_1)
+            print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios_1 / med)))
+
+        mean_errors = np.array(errors).mean(0)
+
+        print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
+        print(("&{: 8.3f}  " * 7).format(*mean_errors.tolist()) + "\\\\")
+        print("\n-> Done!")
+        
     
     def inference_test(
         self,
@@ -200,7 +258,7 @@ class AdvPatchTask:
             print(results)
             torch.cuda.empty_cache()
     
-    def visualize(
+    def visualize_benign(
         self,
         dataset,
         ):
@@ -219,3 +277,22 @@ class AdvPatchTask:
             torch.cuda.empty_cache()
             
         cv2.destroyAllWindows()
+        
+    def visualize_adv(
+        self,
+        eval_dataset,
+        ):
+        
+        for i_batch, samples in enumerate(eval_dataset):
+            imgs = samples[("color", 0, 0)]
+            
+            if self.adv_patch is None:
+                predictions = self.forward_eval(samples, self.adv_patch)[("disp", 0)]
+            else:
+                imgs, outputs = self.forward_eval(samples, self.adv_patch)
+                predictions = outputs[("disp", 0)]
+            
+            for i_sample, (img, prediction) in enumerate(zip(imgs, predictions)):
+                img = img.permute(1, 2, 0).detach().cpu().numpy()
+                number = (i_batch+1) * (i_sample+1)
+                self.mde_model.plot(img, prediction, save=True, save_path=f'sample for inference/test_{number}.jpg')
