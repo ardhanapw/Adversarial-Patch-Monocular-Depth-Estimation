@@ -168,8 +168,16 @@ class PatchTransformer(nn.Module):
         #pad = (img_size - patch.size(-1)) / 2
         #print(img_size)
         img_width, img_height = img_size
-        pad_width = (img_width - patch.size(-1)) / 2
-        pad_height = (img_height - patch.size(-1)) / 2
+        
+        #patch is square
+        width_diff = img_width - patch.size(-1)
+        height_diff = img_height - patch.size(-1)
+        pad_left = width_diff // 2
+        pad_right = width_diff - pad_left
+        pad_top = height_diff // 2
+        pad_bottom = height_diff - pad_top
+        #pad_width = (img_width - patch.size(-1)) / 2
+        #pad_height = (img_height - patch.size(-1)) / 2
         
         # Make a batch of patches
         adv_batch = patch.expand(batch_size, -1, -1, -1)
@@ -187,7 +195,8 @@ class PatchTransformer(nn.Module):
         # Pad patch and mask to image dimensions
         # mypad = nn.ConstantPad2d((pad_left, pad_right, pad_top, pad_bottom), 0)
         #mypad = nn.ConstantPad2d((160, 544, int(pad + 0.5), int(pad)), 0)
-        mypad = nn.ConstantPad2d((int(pad_width + 0.5), int(pad_width), int(pad_height + 0.5), int(pad_height)), 0)
+        #mypad = nn.ConstantPad2d((int(pad_width + 0.5), int(pad_width), int(pad_height + 0.5), int(pad_height)), 0)
+        mypad = nn.ConstantPad2d((pad_left, pad_right, pad_top, pad_bottom), 0)
         
         adv_batch = mypad(adv_batch)
         mask_batch = mypad(mask_batch)
@@ -263,7 +272,9 @@ class PatchTransformer(nn.Module):
 
         M_inv = torch.inverse(M)
         #theta = self.normalize_transforms(M_inv, W=512, H=256)
-        theta = self.normalize_transforms(M_inv, W=1024, H=320)
+        #theta = self.normalize_transforms(M_inv, W=640, H=192)
+        #theta = self.normalize_transforms(M_inv, W=1024, H=320)
+        theta = self.normalize_transforms(M_inv, W=img_width, H=img_height)
 
         grid = F.affine_grid(theta, adv_batch.shape, align_corners=False)
         adv_batch_t = F.grid_sample(adv_batch, grid, align_corners=False)
