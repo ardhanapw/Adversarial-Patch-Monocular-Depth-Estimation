@@ -1,29 +1,18 @@
 import torch
 import argparse
-import os
 
 from utils.cfg_loader import load_yaml
-import utils.logger
 
 from models import load_models
 from PIL import Image
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config_path", default='patch_trainer.yml')
+parser.add_argument("--config_path", default='config.yml')
 
 def main():
     #arg parser and file config
     args = parser.parse_args()
     cfg = load_yaml(args.config_path)
-    
-    #create destination directory
-    os.makedirs(cfg["log"]["tensorboard_dir"], exist_ok=True)
-    os.makedirs(cfg["log"]["patch_checkpoint_dir"], exist_ok=True)
-    
-    #Tensorboard
-    writer = utils.logger.init_tensorboard(cfg['log']['tensorboard_dir'])
-    for key, value in cfg.items():
-        writer.add_text(key, str(value))
     
     #initialize device
     device = torch.device(cfg['device'])
