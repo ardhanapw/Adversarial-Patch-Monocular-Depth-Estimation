@@ -8,6 +8,7 @@ import os
 
 from utils.cfg_loader import load_yaml
 from utils.data_loader import LoadFromImageFile
+from utils.original_kitti_dataloader import KITTIRAWDataset, readlines
 import utils.custom_transforms as transformer
 import utils.logger
 
@@ -17,7 +18,7 @@ from adv_utils.tasks import AdvPatchTask
 from PIL import Image
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--config_path", default='patch_trainer.yml')
+parser.add_argument("--config_path", default='config.yml')
 
 def main():
     #arg parser and file config
@@ -46,6 +47,29 @@ def main():
     initialize_model = load_models(model_name, model_path, device)
     
     #dataloader and augmentation
+    train_files = readlines(cfg['lists']['train_list'])
+    train_dataset = KITTIRAWDataset(cfg['dataset']['train_path'], train_files,
+                                   192, 640, [0], 4, is_train=False)
+    
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        batch_size=cfg['dataset']['batch_size'],
+        shuffle=True,
+        num_workers=cfg['dataset']['num_workers'],
+        pin_memory=True,
+        drop_last=False
+    )
+    
+    #scene augmentation
+    brightness = cfg['patch']['patch_augmentation']['brightness']
+    contrast = cfg['patch']['patch_augmentation']['contrast']
+    output_augmentation = transforms.Compose(
+        [
+            transforms.ColorJitter(brightness=brightness, contrast=contrast),
+        ]
+    )
+    
+    """
     train_transform = transformer.Compose([
         transformer.RandomHorizontalFlip(),
         transformer.RandomAugumentColor(),
@@ -77,6 +101,7 @@ def main():
             transforms.ColorJitter(brightness=brightness, contrast=contrast),
         ]
     )
+    """
     
     #adversarial loss
     adversarial_loss = AdversarialLoss(
@@ -101,7 +126,8 @@ def main():
         adv_patch=adv_patch_cpu,
         output_augmentation=output_augmentation,
         device=device,
-        target_disp=cfg['patch']['target_disp_sigmoid']
+        target_disp=cfg['patch']['target_disp_sigmoid'],
+        target_size=cfg['patch']['target_size']
     )
     
     #adv_patch_trainer.visualize(train_loader)

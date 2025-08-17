@@ -1,5 +1,5 @@
 dataset:
-  eval_path: datasets/KITTI_TA_test_split
+  eval_path: datasets/KITTI_TA_car_test_split
   dataset_path: datasets/kitti_test/images
   batch_size: 4
   num_workers: 2
@@ -17,10 +17,11 @@ log:
 lists:
   30_rgb_triplets_path: lists/printable30values.txt 
   train_list: lists/train_list.txt
-  eval_list: lists/test_list_12.txt
+  eval_list: lists/car_dataset_test_12.txt
 
 patch:
-  path: patch-4358-far.jpg
+  path: random
+  target_size: None
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:

@@ -46,6 +46,7 @@ def main():
         adv_patch_cpu = load_patch_from_img(cfg['patch']['path']).to(device)
     
     #train patch
+    #add target size to be tested
     adv_patch_instance = AdvPatchTask(
         mde_model=initialize_model,
         adv_patch=adv_patch_cpu,

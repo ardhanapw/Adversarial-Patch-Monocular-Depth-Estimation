@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import cv2
 import numpy as np
+import random
 
 def create_mask(p):
     h, w = p.shape[-2], p.shape[-1]
@@ -11,8 +12,11 @@ def create_mask(p):
 
 def apply_patch(augmented_patch: torch.Tensor,
                 rgb: torch.Tensor,
+                target_size:float,
                 current_batch_size: int,
-                mask: torch.Tensor = None):
+                bboxes: torch.Tensor,
+                mask: torch.Tensor = None,
+):
     
     #print("function")
     #print(rgb.shape)
@@ -31,36 +35,17 @@ def apply_patch(augmented_patch: torch.Tensor,
     else:
         mask = mask.to(device)
 
-    img_size = (W, H)  # correct now
+    img_size = (W, H)
     patch_t, mask_t = transformer(
         patch=augmented_patch,
         mask=mask,
         batch_size=B,
         img_size=img_size,
+        bboxes=bboxes,
+        target_size=target_size,
         do_rotate=True,
-        rand_loc=True,
-        random_size=True,
-        train=True
+        train=True,
     )
-    
-    """
-    if augmented_patch.dim() == 4:
-        adv_list, m_list = [], []
-        for i in range(B):
-            adv_i, m_i = transformer(
-                augmented_patch[i].to(device),
-                (mask[i] if mask.dim() == 4 else create_mask(augmented_patch[i])).to(device),
-                batch_size=1, img_size=img_size,
-                do_rotate=do_rotate, rand_loc=rand_loc,
-                random_size=random_size, do_perspective=do_perspective, train=train
-            )
-            adv_list.append(adv_i)
-            m_list.append(m_i)
-        adv_batch_t = torch.cat(adv_list, dim=0)
-        mask_batch_t = torch.cat(m_list, dim=0)
-    else:
-        raise ValueError(f"augmented_patch must be 3D or 4D, got {augmented_patch.dim()}D")
-    """
 
     final_images = applier(rgb, patch_t, mask_t)
 
@@ -85,28 +70,6 @@ class PatchApplier(nn.Module):
         patched_img_batch = torch.mul((1 - mask), img_batch) + torch.mul(mask, patch)
         return patched_img_batch
 
-
-"""
-class PatchApplier(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, img_batch, patch, mask):
-        if mask.dtype != img_batch.dtype:
-            mask = mask.to(img_batch.dtype)
-        if patch.dtype != img_batch.dtype:
-            patch = patch.to(img_batch.dtype)
-
-        B, C, H, W = img_batch.shape
-        assert patch.shape == (B, C, H, W), f"patch {patch.shape} vs img {img_batch.shape}"
-        assert mask.shape == (B, C, H, W) or mask.shape == (B, 1, H, W), f"mask {mask.shape} not compatible"
-
-        if mask.shape[1] == 1 and C > 1:
-            mask = mask.expand(B, C, H, W)
-
-        return (1 - mask) * img_batch + mask * patch
-"""
-
 class PatchTransformer(nn.Module):
     def __init__(self):
         super(PatchTransformer, self).__init__()
@@ -115,19 +78,19 @@ class PatchTransformer(nn.Module):
         self.min_brightness = -0.05
         self.max_brightness = 0.05
         self.noise_factor = 0.10
-        self.minangle = -20
-        self.maxangle = 20
-        self.minsize = 0.35
-        self.maxsize = 0.45
+        self.minangle = 0#-20
+        self.maxangle = 0#20
+        self.minsize = 0.25#0.35
+        self.maxsize = 0.25#0.45
 
-        self.min_x_off = -200
-        self.max_x_off = 200
-        self.min_y_off = -80
-        self.max_y_off = 80
-        self.max_x_trans = 0.1
-        self.min_x_trans = -0.1
-        self.max_y_trans = 0.1
-        self.min_y_trans = -0.1
+        self.min_x_off = 0#-200
+        self.max_x_off = 0#200
+        self.min_y_off = 0#-80
+        self.max_y_off = 0#80
+        self.max_x_trans = 0#0.1
+        self.min_x_trans = 0#-0.1
+        self.max_y_trans = 0#0.1
+        self.min_y_trans = 0#-0.1
 
     def normalize_transforms(self, transforms, W, H):
         theta = torch.zeros(transforms.shape[0], 2, 3).cuda()
@@ -161,17 +124,29 @@ class PatchTransformer(nn.Module):
         h = torch.cat([h, torch.ones(B, 1, device=src.device)], dim=1)
         return h.view(B, 3, 3)
 
-    def forward(self, patch, mask, batch_size, img_size, do_rotate=True, rand_loc=True, random_size=True, do_perspective=True, train=True):
+    def forward(self, patch, mask, batch_size, img_size, bboxes, target_size=None, do_rotate=True, do_perspective=False, train=True):
         device = patch.device
         # Determine size of padding
         #print("Patch Transformer")
         #pad = (img_size - patch.size(-1)) / 2
         #print(img_size)
         img_width, img_height = img_size
+        img_minimum_dim = min(img_width, img_height)
+        #print(patch.shape, mask.shape)
+        
+        if patch.size(-1) > img_minimum_dim:
+            patch = F.interpolate(
+                patch.unsqueeze(0), size=(img_minimum_dim, img_minimum_dim), 
+                mode="bilinear", align_corners=False
+            )
+            mask = F.interpolate(
+                mask.unsqueeze(0), size=(img_minimum_dim, img_minimum_dim), 
+                mode="nearest"  # nearest for masks, no interpolation blur
+            )
         
         #patch is square
-        width_diff = img_width - patch.size(-1)
-        height_diff = img_height - patch.size(-1)
+        width_diff = max(img_width - patch.size(-1), 0)
+        height_diff = max(img_height - patch.size(-1), 0)
         pad_left = width_diff // 2
         pad_right = width_diff - pad_left
         pad_top = height_diff // 2
@@ -200,48 +175,102 @@ class PatchTransformer(nn.Module):
         
         adv_batch = mypad(adv_batch)
         mask_batch = mypad(mask_batch)
-
+        
         # Rotation and rescaling transforms
         if do_rotate:
             angle = torch.FloatTensor(1).uniform_(self.minangle, self.maxangle).to(device).expand(batch_size)
         else:
             angle = torch.zeros(batch_size, device=device)
+        angle_rad = angle * math.pi / 180
+        cos = torch.cos(angle_rad)
+        sin = torch.sin(angle_rad)
+            
+        center = torch.tensor([adv_batch.shape[3] / 2, adv_batch.shape[2] / 2], device=device).expand(batch_size, 2)
 
+        rotation = torch.eye(3, device=device).unsqueeze(0).repeat(batch_size, 1, 1)
+        
+        scale = torch.ones(batch_size, device=device)
+        # Translation
+        translation = torch.eye(3, 3).cuda()
+        translation = translation.expand(batch_size, -1, -1).clone()
+        
+        #resize to fit bounding box  
+        x1 = (bboxes[:, 0] * img_width)
+        y1 = (bboxes[:, 1] * img_height)
+        x2 = (bboxes[:, 2] * img_width)
+        y2 = (bboxes[:, 3] * img_height)
+        
+        #print("patch transformer too")
+        #print(x1, y1, x2, y2)
+        #print((y2-y1) * (x2-x1))
+        
+        x_center = (x1 + x2) / 2.0
+        y_center = (y1 + y2) / 2.0
+        
+        bbox_width = (x2 - x1).clamp(min=1.0)
+        bbox_height = (y2 - y1).clamp(min=1.0)
+        
+        #maximum patch scaling possible in the bounding box
+        if target_size is None:
+            target_size = random.uniform(0, 1) #torch.rand(0, 1).to(device)
+
+        side = torch.sqrt(target_size * bbox_width * bbox_height)
+        max_side = torch.min(bbox_width, bbox_height)
+        side = torch.min(side, max_side)
+        scale = side/patch.size(-1)
+        ratio = ((scale * patch.size(-1)) ** 2)/(bbox_width*bbox_height)
+        #print("ratio")
+        #print(ratio)
+        #print(bbox_width.shape)
+
+        
+        x_off = x_center - (img_width / 2.0)
+        y_off = y_center - (img_height / 2.0)
+        translation[:, 0, 2] = x_off
+        translation[:, 1, 2] = y_off
+        
+        #check ratio between resized patch and bbox
+
+        
+        #ensure placement is within bbox
+        bbox_mask = torch.zeros((batch_size, 1, img_height, img_width), device=device, dtype=mask_batch.dtype)
+        x_min = x1.floor().clamp(0, img_width - 1).int()
+        y_min = y1.floor().clamp(0, img_height - 1).int()
+        x_max = x2.ceil().clamp(1, img_width).int()
+        y_max = y2.ceil().clamp(1, img_height).int()
+        
+        for b in range(batch_size):
+            bbox_mask[b, 0, y_min[b]:y_max[b], x_min[b]:x_max[b]] = 1.0
+        
+        """
         # Resize
         current_patch_size = adv_batch.size(-2)
         if random_size:
             size = torch.FloatTensor(1).uniform_(self.minsize, self.maxsize).to(device)
-            target_size = current_patch_size * (size ** 2)
+            target_size = current_patch_size * size#(size ** 2)
         else:
             target_size = torch.tensor([current_patch_size * (0.4 ** 2)], device=device)
         scale = (target_size / current_patch_size).expand(batch_size)
+        """
         
-        angle_rad = angle * math.pi / 180
 
-        cos = torch.cos(angle_rad) * scale
-        sin = torch.sin(angle_rad) * scale
         
 
         # Rotate
-        center = torch.tensor([adv_batch.shape[3] / 2, adv_batch.shape[2] / 2], device=device).expand(batch_size, 2)
+        rotation[:, 0, 0] = cos * scale
+        rotation[:, 0, 1] = -sin * scale
+        rotation[:, 1, 0] = sin * scale
+        rotation[:, 1, 1] = cos * scale
+        rotation[:, 0, 2] = center[:, 0] * (1 - cos*scale) - center[:, 1] * (sin*scale)
+        rotation[:, 1, 2] = center[:, 1] * (1 - cos*scale) + center[:, 0] * (sin*scale)
 
-        rotation = torch.eye(3, device=device).unsqueeze(0).repeat(batch_size, 1, 1)
-        rotation[:, 0, 0] = cos
-        rotation[:, 0, 1] = -sin
-        rotation[:, 1, 0] = sin
-        rotation[:, 1, 1] = cos
-        rotation[:, 0, 2] = center[:, 0] * (1 - cos) - center[:, 1] * sin
-        rotation[:, 1, 2] = center[:, 1] * (1 - cos) + center[:, 0] * sin
-
-        # Translation
-        translation = torch.eye(3, 3).cuda()
-        translation = translation.expand(batch_size, -1, -1).clone()
-
+        """
         if rand_loc:
             x_off = torch.FloatTensor(1).uniform_(self.min_x_off, self.max_x_off).to(device) / scale
             y_off = torch.FloatTensor(1).uniform_(self.min_y_off, self.max_y_off).to(device) / scale
             translation[:, 0, 2] = x_off
             translation[:, 1, 2] = y_off
+        """
 
 
         if do_perspective:
@@ -268,7 +297,7 @@ class PatchTransformer(nn.Module):
             M = rotation @ translation @ perspective
             
         else:
-            M = rotation @ translation
+            M = translation @ rotation #rotation @ translation
 
         M_inv = torch.inverse(M)
         #theta = self.normalize_transforms(M_inv, W=512, H=256)
@@ -279,6 +308,17 @@ class PatchTransformer(nn.Module):
         grid = F.affine_grid(theta, adv_batch.shape, align_corners=False)
         adv_batch_t = F.grid_sample(adv_batch, grid, align_corners=False)
         mask_batch_t = F.grid_sample(mask_batch, grid, align_corners=False)
+        mask_batch_t = (mask_batch_t > 0.5).float()
+        
+        #print("Patch transformer")
+        #print((mask_batch_t > 0).sum(dim=(1,2,3)))
+        if mask_batch_t.shape[1] != 1:
+            bbox_mask = bbox_mask.expand(-1, mask_batch_t.shape[1], -1, -1)
+        mask_batch_t = mask_batch_t * bbox_mask
+        #print((mask_batch_t > 0).sum(dim=(1,2,3)))
+        #print((bbox_mask > 0).sum(dim=(1,2,3)))
+        
+        #print(adv_batch_t.shape, (mask_batch_t > 0).sum(dim=(1,2,3)))
 
         return adv_batch_t, mask_batch_t
 

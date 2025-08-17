@@ -55,6 +55,8 @@ class MonoDataset(data.Dataset):
 
         self.loader = pil_loader
         self.to_tensor = transforms.ToTensor()
+        
+        self.load_labels = False
 
         # We need to specify augmentations differently in newer versions of torchvision.
         # We first try the newer tuple version; if this fails we fall back to scalars
@@ -134,16 +136,22 @@ class MonoDataset(data.Dataset):
 
         line = self.filenames[index].split()
         folder = line[0]
-
-        if len(line) == 3:
+        #print("In Mono Dataset")
+        #print(folder)
+        
+        if len(line) >= 3:
             frame_index = int(line[1])
         else:
             frame_index = 0
 
-        if len(line) == 3:
+        if len(line) >= 3:
             side = line[2]
         else:
             side = None
+            
+        #initiate labels in the form of xyxyn
+        label = list(map(float, line[3:]))
+        inputs["label"] = torch.tensor(label, dtype=torch.float32)
 
         for i in self.frame_idxs:
             if i == "s":
@@ -190,6 +198,17 @@ class MonoDataset(data.Dataset):
             stereo_T[0, 3] = side_sign * baseline_sign * 0.1
 
             inputs["stereo_T"] = torch.from_numpy(stereo_T)
+            
+        #load labels
+        if self.load_labels:
+            label = self.get_labels(folder, frame_index, side)
+            inputs["label"] = np.loadtxt(label)
+        
+        #print("Get item")
+        #print(inputs["depth_gt"].shape) #[B, H, W]
+        #print(inputs[("color", 0, 0)].shape) #[C, H, W]
+        #print(inputs["label"].shape)
+        #print(self.filenames)
 
         return inputs
 
@@ -200,4 +219,7 @@ class MonoDataset(data.Dataset):
         raise NotImplementedError
 
     def get_depth(self, folder, frame_index, side, do_flip):
+        raise NotImplementedError
+
+    def get_labels(self, folder, frame_index, side):
         raise NotImplementedError

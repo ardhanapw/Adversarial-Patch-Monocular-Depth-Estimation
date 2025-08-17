@@ -91,6 +91,8 @@ class KITTIRAWDataset(KITTIDataset):
         return image_path
 
     def get_depth(self, folder, frame_index, side, do_flip):
+        #print("In get_depth")
+        #print(self.data_path, folder)
         calib_path = os.path.join(self.data_path, folder.split("/")[0])
 
         velo_filename = os.path.join(
