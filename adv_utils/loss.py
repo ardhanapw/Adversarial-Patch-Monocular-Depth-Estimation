@@ -61,12 +61,14 @@ class AdversarialLoss:
         disp_loss_weight: float = 1.0,
         nps_loss_weight: float = 0.01,
         tv_loss_weight: float = 0.25,
+        content_loss_weight: float = 0.5,
         nps_triplet_scores_fpath: str = None,
         loss_function: str = "bce",
     ):
         self.disp_loss_weight = disp_loss_weight
         self.nps_loss_weight = nps_loss_weight
         self.tv_loss_weight = tv_loss_weight
+        self.content_loss_weight = content_loss_weight
 
         if loss_function == "bce":
             self.loss_function = torch.nn.functional.binary_cross_entropy
@@ -109,8 +111,24 @@ class AdversarialLoss:
         nps_loss = nps(adv_patch)
 
         return nps_loss * self.nps_loss_weight
+    
+    def content_loss(
+        self, 
+        scene_before: torch.Tensor, 
+        scene_after: torch.Tensor,
+        masks: torch.Tensor) -> torch.Tensor:
+        
+        loss = self.loss_function(
+            scene_after, scene_before, reduction="none"
+        )
+        
+        valid_indices = masks > 0.5
+        valid_loss = loss[valid_indices]
+        final_loss = torch.mean(valid_loss)
+        
+        return final_loss * self.content_loss_weight
 
-    def __call__(self, adv_patch, masks, predicted_disparities, target_disparities):
+    def __call__(self, adv_patch, masks, predicted_disparities, target_disparities, scene_before, scene_after):
         # disp loss
         if self.disp_loss_weight > 0:
             disp_loss = self.disp_loss(
@@ -130,13 +148,19 @@ class AdversarialLoss:
             tv_loss = self.tv_loss(adv_patch)
         else:
             tv_loss = 0.0
+            
+        if self.content_loss_weight > 0:
+            content_loss = self.content_loss(scene_before, scene_after, masks)
+        else:
+            content_loss = 0.0
 
         # Compute the total loss
-        total_loss = disp_loss + nps_loss + tv_loss
+        total_loss = disp_loss + nps_loss + tv_loss + content_loss
 
         return {
             "total_loss": total_loss,
             "disp_loss": disp_loss,
             "nps_loss": nps_loss,
             "tv_loss": tv_loss,
+            "content_loss": content_loss
         }

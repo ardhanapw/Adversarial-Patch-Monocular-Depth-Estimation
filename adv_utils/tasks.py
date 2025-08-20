@@ -47,7 +47,6 @@ class AdvPatchTask:
         self,
         batch,
         adv_patch=None,
-        target_size=None,
         mode='eval' #can be eval or inspect
     ):
         images = batch[("color", 0, 0)].to(self.device)
@@ -118,6 +117,8 @@ class AdvPatchTask:
                 patch_masks,
                 predicted_disp,
                 torch.full_like(predicted_disp, self.target_disp), #zero target disparity means far away object, vice versa
+                rgb,
+                final_images
             ) #avoid zero or one target_disp on BCE loss
 
             return {
@@ -141,7 +142,7 @@ class AdvPatchTask:
     ):
         start_time = time.time()
         for epoch in range(epochs):
-            ep_loss, ep_disp_loss, ep_nps_loss, ep_tv_loss = 0, 0, 0, 0
+            ep_loss, ep_disp_loss, ep_nps_loss, ep_tv_loss, ep_content_loss = 0, 0, 0, 0, 0
             
             for i_batch, sample in tqdm(enumerate(train_dataset), desc=f"Train Epoch {epoch+1}/{epochs}", total=len(train_dataset)):
                 with torch.autograd.detect_anomaly():
@@ -158,6 +159,7 @@ class AdvPatchTask:
                     ep_disp_loss += results['loss']['disp_loss'].detach().cpu().numpy()
                     ep_nps_loss += results['loss']['nps_loss'].detach().cpu().numpy()
                     ep_tv_loss += results['loss']['tv_loss'].detach().cpu().numpy()
+                    ep_content_loss += results['loss']['content_loss'].detach().cpu().numpy()
 
                     if i_batch % int(log_interval/train_dataset.batch_size) == 0:
                         iteration = len(train_dataset) * epoch + i_batch
@@ -165,6 +167,7 @@ class AdvPatchTask:
                         writer.add_scalar("loss/disp_loss", results['loss']['disp_loss'], iteration)
                         writer.add_scalar("loss/nps_loss", results['loss']['nps_loss'], iteration)
                         writer.add_scalar("loss/tv_loss", results['loss']['tv_loss'], iteration)
+                        writer.add_scalar("loss/content_loss", results['loss']['content_loss'], iteration)
                         writer.add_scalar("misc/epoch", epoch, iteration)
                         writer.add_scalar("misc/learning_rate", self.optimizer.param_groups[0]["lr"], iteration)
                         writer.add_image("patch", self.adv_patch.detach().cpu().numpy(), iteration)
@@ -174,6 +177,7 @@ class AdvPatchTask:
             ep_disp_loss = ep_disp_loss/len(train_dataset)
             ep_nps_loss = ep_nps_loss/len(train_dataset)
             ep_tv_loss = ep_tv_loss/len(train_dataset)
+            ep_content_loss = ep_content_loss/len(train_dataset)
             total_time = time.time() - start_time
             print('===============================')
             print(f"Total training time: {format_time(int(total_time))}")
@@ -182,6 +186,7 @@ class AdvPatchTask:
             print('Disparity loss: ', ep_disp_loss)
             print('NPS loss: ', ep_nps_loss)
             print('TV loss: ', ep_tv_loss)
+            print('Content loss: ', ep_content_loss)
             print('===============================')
             np.save(patch_export_path + '/epoch_{}_patch.npy'.format(str(epoch)), self.adv_patch.data.detach().cpu().numpy())
             np.save(patch_export_path + '/epoch_{}_mask.npy'.format(str(epoch)), results['patch_masks'].data.detach().cpu().numpy())
@@ -220,6 +225,8 @@ class AdvPatchTask:
                 #print(len(eval_dataset))
                 #print(batch['depth_gt'].shape)
                 #print(patch_mask.shape)
+                #print(np.sum(patch_mask > 0, axis=(1, 2)))
+                #print(predicted_benign_disp_scaled.shape)
                 #print(predicted_adv_disp_scaled.shape)
                 
                 #post processing (refer to monodepth)
@@ -250,12 +257,15 @@ class AdvPatchTask:
             gt_depth = gt_depths[i]
             gt_height, gt_width = gt_depth.shape[:2]
 
-            pred_depth = predicted_benign_disp[i]
-            pred_depth = cv2.resize(pred_depth, (gt_width, gt_height))
-            pred_depth = 1 / pred_depth
+            pred_disp = predicted_benign_disp[i]
+            pred_disp = cv2.resize(pred_disp, (gt_width, gt_height))
+            pred_depth = 1 / pred_disp
 
+            #limit to valid KITTI dataset ground truth depth range
             mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
-
+            
+            #ground truth LIDAR cuma ada di sebagian area gambar
+            #start dari pertengahan gambar
             crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
                             0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
             crop_mask = np.zeros(mask.shape)
@@ -272,6 +282,8 @@ class AdvPatchTask:
             gt_depth = gt_depth[mask]
 
             pred_depth *= float(1)
+            
+            #median scaling
             ratio = np.median(gt_depth) / np.median(pred_depth)
             ratios.append(ratio)
             pred_depth *= ratio
@@ -280,6 +292,9 @@ class AdvPatchTask:
             pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
 
             errors_benign.append(compute_errors(gt_depth, pred_depth))
+            
+            #print(np.mean(gt_depth))
+            #print(errors_benign[i])
             
             ratios_1 = np.array(ratios)
             med = np.median(ratios_1)
@@ -328,6 +343,9 @@ class AdvPatchTask:
             pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
 
             errors_adv.append(compute_errors(gt_depth, pred_depth))
+            
+            #print(np.mean(gt_depth))
+            #print(errors_adv[i])
             
             ratios_1 = np.array(ratios)
             med = np.median(ratios_1)
@@ -383,6 +401,8 @@ class AdvPatchTask:
             else:
                 imgs, outputs = self.forward_eval(samples, self.adv_patch, mode='inspect')
                 predictions = outputs[("disp", 0)]
+                #print(torch.min(predictions), torch.max(predictions), torch.mean(predictions), torch.median(predictions))
+                #print((predictions>0).sum(dim=(1,2,3)))
             
             for i_sample, (img, prediction) in enumerate(zip(imgs, predictions)):
                 img = img.permute(1, 2, 0).detach().cpu().numpy()

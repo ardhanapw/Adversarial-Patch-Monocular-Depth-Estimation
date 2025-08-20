@@ -36,6 +36,8 @@ def apply_patch(augmented_patch: torch.Tensor,
         mask = mask.to(device)
 
     img_size = (W, H)
+    #print("In apply patch")
+    #print(target_size)
     patch_t, mask_t = transformer(
         patch=augmented_patch,
         mask=mask,
@@ -43,7 +45,7 @@ def apply_patch(augmented_patch: torch.Tensor,
         img_size=img_size,
         bboxes=bboxes,
         target_size=target_size,
-        do_rotate=True,
+        do_rotate=False,
         train=True,
     )
 
@@ -124,7 +126,7 @@ class PatchTransformer(nn.Module):
         h = torch.cat([h, torch.ones(B, 1, device=src.device)], dim=1)
         return h.view(B, 3, 3)
 
-    def forward(self, patch, mask, batch_size, img_size, bboxes, target_size=None, do_rotate=True, do_perspective=False, train=True):
+    def forward(self, patch, mask, batch_size, img_size, bboxes, target_size, do_rotate=True, do_perspective=False, train=True):
         device = patch.device
         # Determine size of padding
         #print("Patch Transformer")
@@ -209,9 +211,11 @@ class PatchTransformer(nn.Module):
         
         bbox_width = (x2 - x1).clamp(min=1.0)
         bbox_height = (y2 - y1).clamp(min=1.0)
+        #print(bbox_width, bbox_height)
+        #print(target_size)
         
         #maximum patch scaling possible in the bounding box
-        if target_size is None:
+        if target_size is None or target_size == 'None':
             target_size = random.uniform(0, 1) #torch.rand(0, 1).to(device)
 
         side = torch.sqrt(target_size * bbox_width * bbox_height)
@@ -222,6 +226,8 @@ class PatchTransformer(nn.Module):
         #print("ratio")
         #print(ratio)
         #print(bbox_width.shape)
+        #print(side)
+        #print(target_size*bbox_width*bbox_height)
 
         
         x_off = x_center - (img_width / 2.0)
@@ -252,9 +258,6 @@ class PatchTransformer(nn.Module):
             target_size = torch.tensor([current_patch_size * (0.4 ** 2)], device=device)
         scale = (target_size / current_patch_size).expand(batch_size)
         """
-        
-
-        
 
         # Rotate
         rotation[:, 0, 0] = cos * scale
@@ -271,7 +274,6 @@ class PatchTransformer(nn.Module):
             translation[:, 0, 2] = x_off
             translation[:, 1, 2] = y_off
         """
-
 
         if do_perspective:
             # Perspective transform
