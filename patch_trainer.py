@@ -108,6 +108,7 @@ def main():
         disp_loss_weight = cfg['patch']['loss_weight']['disp_loss'],
         nps_loss_weight = cfg['patch']['loss_weight']['nps_loss'],
         tv_loss_weight = cfg['patch']['loss_weight']['tv_loss'],
+        content_loss_weight = cfg['patch']['loss_weight']['content_loss'],
         nps_triplet_scores_fpath= cfg['lists']['30_rgb_triplets_path']
     )
     

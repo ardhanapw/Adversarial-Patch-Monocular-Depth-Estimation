@@ -2,6 +2,7 @@ from models.monodepth2.model import MonoDepth2
 from models.depth_hints.model import DepthHints
 #from models.monovit.model import MonoViT
 from models.lite_mono.model import LiteMono
+from models.depth_anything.model import CustomDepthAnything
 
 def load_models(model_name, model_path, device):
     if model_name == 'monodepth2':
@@ -12,3 +13,5 @@ def load_models(model_name, model_path, device):
     #    return MonoViT(model_path, device)
     elif model_name == 'lite_mono':
         return LiteMono(model_path, device)
+    elif model_name == 'depth_anything':
+        return CustomDepthAnything(model_path, device)

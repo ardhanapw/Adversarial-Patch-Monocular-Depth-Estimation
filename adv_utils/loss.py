@@ -61,7 +61,7 @@ class AdversarialLoss:
         disp_loss_weight: float = 1.0,
         nps_loss_weight: float = 0.01,
         tv_loss_weight: float = 0.25,
-        content_loss_weight: float = 0.5,
+        content_loss_weight: float = 0.001,
         nps_triplet_scores_fpath: str = None,
         loss_function: str = "bce",
     ):
@@ -121,6 +121,7 @@ class AdversarialLoss:
         loss = self.loss_function(
             scene_after, scene_before, reduction="none"
         )
+        masks = masks.expand_as(scene_after)
         
         valid_indices = masks > 0.5
         valid_loss = loss[valid_indices]
@@ -135,24 +136,24 @@ class AdversarialLoss:
                 predicted_disparities, target_disparities, masks
             )
         else:
-            disp_loss = 0.0
+            disp_loss = torch.tensor(0.0)
             
         #nps loss
         if self.nps_loss_weight > 0:
             nps_loss = self.nps_loss(adv_patch)
         else:
-            nps_loss = 0.0
+            nps_loss = torch.tensor(0.0)
 
         # TV loss
         if self.tv_loss_weight > 0:
             tv_loss = self.tv_loss(adv_patch)
         else:
-            tv_loss = 0.0
+            tv_loss = torch.tensor(0.0)
             
         if self.content_loss_weight > 0:
             content_loss = self.content_loss(scene_before, scene_after, masks)
         else:
-            content_loss = 0.0
+            content_loss = torch.tensor(0.0)
 
         # Compute the total loss
         total_loss = disp_loss + nps_loss + tv_loss + content_loss

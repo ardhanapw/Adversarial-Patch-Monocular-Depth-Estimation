@@ -1,12 +1,12 @@
 dataset:
   eval_path: datasets/KITTI_TA_car_test_split
-  dataset_path: datasets/kitti_test/images
+  train_path: datasets/kitti_test/images
   batch_size: 4
   num_workers: 2
 
 model:
-  model_name: lite_mono
-  model_path: weights/lite_mono/8m_640x192
+  model_name: depth_anything
+  model_path: weights/depth_anything/vits
 
 log:
   comet_ml_credentials: comet_ml_cred.json
@@ -16,12 +16,12 @@ log:
 
 lists:
   30_rgb_triplets_path: lists/printable30values.txt 
-  train_list: lists/train_list.txt
+  train_list: lists/car_dataset_train.txt
   eval_list: lists/car_dataset_test_12.txt
 
 patch:
   path: patch-1106-litemono-far.jpg
-  target_size: 0.09
+  eval_target_size: 0.04
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:
@@ -34,8 +34,8 @@ patch:
   loss_weight:
     disp_loss: 1
     nps_loss: 0.01
-    tv_loss: 0
-    content_loss: 0.5
+    tv_loss: 0.001
+    content_loss: 0
 
 hyperparameter:
   num_epoch: 10
