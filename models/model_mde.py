@@ -1,6 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 from typing import Tuple, Callable
+import time
 
 class ModelMDE(ABC):
     def __init__(self, device=None, **kwargs):
@@ -23,6 +24,8 @@ class ModelMDE(ABC):
     
     @abstractmethod
     def predict(self, tensor_images, **kwargs):
+        start_time = time.time()
+        print(time.time() - start_time)
         pass
     
     @abstractmethod

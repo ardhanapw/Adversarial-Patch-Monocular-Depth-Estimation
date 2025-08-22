@@ -128,7 +128,6 @@ def main():
         output_augmentation=output_augmentation,
         device=device,
         target_disp=cfg['patch']['target_disp_sigmoid'],
-        target_size=cfg['patch']['target_size']
     )
     
     #adv_patch_trainer.visualize(train_loader)

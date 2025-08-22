@@ -5,6 +5,8 @@ from models.depth_anything.networks.util.transform import Resize, NormalizeImage
 import torch
 import torchvision.transforms as T
 
+import torch.cuda.amp as amp
+
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.cm as cm
@@ -12,9 +14,12 @@ import numpy as np
 
 from models.model_mde import ModelMDE
 
+import time
+
 class CustomDepthAnything(ModelMDE):
     def __init__(self, model_path, device=None, **kwargs):
         self.device = device
+        """
         self.transform = T.Compose([
             Resize(
                 width=518,
@@ -27,6 +32,11 @@ class CustomDepthAnything(ModelMDE):
             ),
             NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             PrepareForNet(),
+        ])
+        """
+        self.transform = T.Compose([
+            T.Resize((518, 518)),
+            T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
         self.model_configs = {
             'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
@@ -50,8 +60,11 @@ class CustomDepthAnything(ModelMDE):
         return self.depth_anything, feed_height, feed_width
     
     def predict(self, img, return_raw=False):
-        H, W = int(img.shape[-2]), int(img.shape[-1])
+        if not torch.is_tensor(img):
+            img = T.ToTensor()(img).unsqueeze(0)
         
+        H, W = int(img.shape[-2]), int(img.shape[-1])
+        """
         imgs = []
         #preprocess from depth anything only works if img is converted to cv2 first
         for sample in img:
@@ -60,9 +73,13 @@ class CustomDepthAnything(ModelMDE):
             imgs.append(torch.from_numpy(transformed))
         
         img_tensor = torch.stack(imgs).to(self.device)
-        
-        with torch.no_grad():
-            output = self.depth_anything(img_tensor)
+        """
+        img = self.transform(img)
+        #start_time = time.time()
+        #with torch.no_grad():
+        with amp.autocast(enabled=True):
+            output = self.depth_anything(img)
+        #print(time.time() - start_time)
 
         output = torch.nn.functional.interpolate(
             output[None], (H, W), mode="bilinear", align_corners=False

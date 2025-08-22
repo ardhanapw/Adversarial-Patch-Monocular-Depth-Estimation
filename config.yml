@@ -21,7 +21,7 @@ lists:
 
 patch:
   path: patch-1106-litemono-far.jpg
-  eval_target_size: 0.04
+  eval_target_size: 0.09
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:
@@ -35,7 +35,7 @@ patch:
     disp_loss: 1
     nps_loss: 0.01
     tv_loss: 0.001
-    content_loss: 0
+    content_loss: 0.5
 
 hyperparameter:
   num_epoch: 10
