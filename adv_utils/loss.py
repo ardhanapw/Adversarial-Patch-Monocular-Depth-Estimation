@@ -102,6 +102,7 @@ class AdversarialLoss:
         valid_indices = masks > 0.5
         valid_loss = loss[valid_indices]
         final_loss = torch.mean(valid_loss)
+        final_loss = torch.pow(final_loss, 2)
 
         return final_loss * self.disp_loss_weight
 
