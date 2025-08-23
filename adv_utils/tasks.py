@@ -55,6 +55,22 @@ class AdvPatchTask:
         
         current_batch_size = images.shape[0]
         
+        h, w = images.shape[-2], images.shape[-1]
+        x1 = (xyxy[:, 0] * w).to(torch.int32)
+        y1 = (xyxy[:, 1] * h).to(torch.int32)
+        x2 = (xyxy[:, 2] * w).to(torch.int32)
+        y2 = (xyxy[:, 3] * h).to(torch.int32)
+
+        ys = torch.arange(h, device=xyxy.device).view(1, h, 1)   # (1,H,1)
+        xs = torch.arange(w, device=xyxy.device).view(1, 1, w)   # (1,1,W)
+
+        inside = (
+            (ys >= y1.view(-1, 1, 1)) & (ys < y2.view(-1, 1, 1)) &
+            (xs >= x1.view(-1, 1, 1)) & (xs < x2.view(-1, 1, 1))
+        )
+
+        vehicle_mask = inside.unsqueeze(1).to(torch.float32) # (B,1,H,W)
+        
         if adv_patch is not None:
             #apply patch
             final_images, patch_masks = apply_patch(
@@ -72,7 +88,7 @@ class AdvPatchTask:
             
             elif mode == 'eval':
                 _, benign_output = self.mde_model.predict(images, return_raw=True)
-                return patch_masks, benign_output, adv_output
+                return vehicle_mask, benign_output, adv_output
         
         _, output = self.mde_model.predict(images, return_raw=True)
         
@@ -85,19 +101,29 @@ class AdvPatchTask:
         adv_patch,
         adversarial_losses: Optional[AdversarialLoss] = None, 
     ):
-        #rgb = batch['left'].to(self.device)
-        rgb = batch[("color", 0, 0)].to(self.device)
+        images = batch[("color", 0, 0)].to(self.device)
         xyxy = batch["label"].to(self.device)
-        #use KITTI dataset for train loader first
         
-        #print(rgb.shape)
-        #print("forward")
+        current_batch_size = images.shape[0]
+        
+        #create mask to optimize for vehicle area, instead of just patch area
+        h, w = images.shape[-2], images.shape[-1]
+        x1 = (xyxy[:, 0] * w).to(torch.int32)
+        y1 = (xyxy[:, 1] * h).to(torch.int32)
+        x2 = (xyxy[:, 2] * w).to(torch.int32)
+        y2 = (xyxy[:, 3] * h).to(torch.int32)
+        ys = torch.arange(h, device=xyxy.device).view(1, h, 1)   # (1,H,1)
+        xs = torch.arange(w, device=xyxy.device).view(1, 1, w)   # (1,1,W)
 
-        current_batch_size = rgb.shape[0]
+        inside = (
+            (ys >= y1.view(-1, 1, 1)) & (ys < y2.view(-1, 1, 1)) &
+            (xs >= x1.view(-1, 1, 1)) & (xs < x2.view(-1, 1, 1))
+        )
+        vehicle_masks = inside.unsqueeze(1).to(torch.float32) # (B,1,H,W)
 
         #apply and augment patch        
         final_images, patch_masks = apply_patch(
-            adv_patch, rgb, self.target_size, current_batch_size, xyxy
+            adv_patch, images, self.target_size, current_batch_size, xyxy
         )
 
         #augment scene
@@ -114,10 +140,10 @@ class AdvPatchTask:
 
             losses = adversarial_losses(
                 adv_patch,
-                patch_masks,
+                vehicle_masks,#patch_masks,
                 predicted_disp,
                 torch.full_like(predicted_disp, self.target_disp), #zero target disparity means far away object, vice versa
-                rgb,
+                images,
                 final_images
             ) #avoid zero or one target_disp on BCE loss
 
@@ -125,7 +151,7 @@ class AdvPatchTask:
                 "loss": losses,
                 "final_images": final_images,
                 "augmented_final_images": augmented_final_images,
-                "patch_masks": patch_masks,
+                "vehicle_masks": vehicle_masks,
                 "predicted_disp": predicted_disp,
             }
             
@@ -189,7 +215,7 @@ class AdvPatchTask:
             print('Content loss: ', ep_content_loss)
             print('===============================')
             np.save(patch_export_path + '/epoch_{}_patch.npy'.format(str(epoch)), self.adv_patch.data.detach().cpu().numpy())
-            np.save(patch_export_path + '/epoch_{}_mask.npy'.format(str(epoch)), results['patch_masks'].data.detach().cpu().numpy())
+            np.save(patch_export_path + '/epoch_{}_mask.npy'.format(str(epoch)), results['vehicle_masks'].data.detach().cpu().numpy())
     
     def evaluate(
         self,
@@ -202,12 +228,12 @@ class AdvPatchTask:
         predicted_benign_disp = []
         predicted_adv_disp = []
         gt_depths = []
-        patch_masks = []
+        vehicle_masks = []
         
         with torch.no_grad():
             for batch in eval_dataset:
-                patch_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, mode = 'eval')
-                patch_mask = patch_mask.detach().cpu()[:, 0].numpy()
+                vehicle_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, mode = 'eval')
+                vehicle_mask = vehicle_mask.detach().cpu()[:, 0].numpy()
                 #print(torch.mean(predicted_disp[("disp", 0)]))
                 
                 #print(predicted_disp[("disp", 0)].shape)
@@ -236,13 +262,13 @@ class AdvPatchTask:
                 gt_depths.append(batch['depth_gt'].detach().cpu()[:, 0].numpy())
                 predicted_benign_disp.append(predicted_benign_disp_scaled)
                 predicted_adv_disp.append(predicted_adv_disp_scaled)
-                patch_masks.append(patch_mask)
+                vehicle_masks.append(vehicle_mask)
                 
         
         predicted_benign_disp = np.concatenate(predicted_benign_disp)
         predicted_adv_disp = np.concatenate(predicted_adv_disp)
         gt_depths = np.concatenate(gt_depths)
-        patch_masks = np.concatenate(patch_masks)
+        vehicle_masks = np.concatenate(vehicle_masks)
         #print(predicted_depths)
         #print(predicted_depths.shape)
         #print(gt_depths.shape)
@@ -258,6 +284,8 @@ class AdvPatchTask:
             gt_height, gt_width = gt_depth.shape[:2]
 
             pred_disp = predicted_benign_disp[i]
+            print(pred_disp.shape)
+            print(gt_width, gt_height)
             pred_disp = cv2.resize(pred_disp, (gt_width, gt_height))
             pred_depth = 1 / pred_disp
 
@@ -273,10 +301,10 @@ class AdvPatchTask:
             mask = np.logical_and(mask, crop_mask)
 
             #evaluasi yang hanya ditempel patch
-            patch_masks_resized =  cv2.resize(
-                patch_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
+            vehicle_masks_resized =  cv2.resize(
+                vehicle_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
             ).astype(bool)
-            mask = np.logical_and(mask, patch_masks_resized)
+            mask = np.logical_and(mask, vehicle_masks_resized)
             
             pred_depth = pred_depth[mask]
             gt_depth = gt_depth[mask]
@@ -326,10 +354,10 @@ class AdvPatchTask:
             mask = np.logical_and(mask, crop_mask)
 
             #evaluasi yang hanya ditempel patch
-            patch_masks_resized =  cv2.resize(
-                patch_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
+            vehicle_masks_resized =  cv2.resize(
+                vehicle_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
             ).astype(bool)
-            mask = np.logical_and(mask, patch_masks_resized)
+            mask = np.logical_and(mask, vehicle_masks_resized)
             
             pred_depth = pred_depth[mask]
             gt_depth = gt_depth[mask]
@@ -392,7 +420,7 @@ class AdvPatchTask:
         self,
         eval_dataset,
         ):
-        
+
         for i_batch, samples in enumerate(eval_dataset):
             imgs = samples[("color", 0, 0)]
             

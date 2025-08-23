@@ -15,13 +15,13 @@ log:
   log_interval: 2000
 
 lists:
-  30_rgb_triplets_path: lists/printable30values.txt 
+  30_rgb_triplets_path: lists/printablebottom10.txt 
   train_list: lists/car_dataset_train.txt
   eval_list: lists/car_dataset_test_12.txt
 
 patch:
-  path: patch-1106-litemono-far.jpg
-  eval_target_size: 0.09
+  path: patch-2256-depthanything-vits-far-tv.jpg
+  eval_target_size: 0.02
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:
@@ -33,9 +33,9 @@ patch:
 
   loss_weight:
     disp_loss: 1
-    nps_loss: 0.01
-    tv_loss: 0.001
-    content_loss: 0.5
+    nps_loss: 5
+    tv_loss: 0.1
+    content_loss: 0
 
 hyperparameter:
   num_epoch: 10

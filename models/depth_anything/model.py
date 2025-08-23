@@ -88,6 +88,10 @@ class CustomDepthAnything(ModelMDE):
         
         #[1, B, H, W] -> [B, 1, H, W]
         output = output.permute(1, 0, 2, 3)
+        #print(output.dtype)
+        
+        #torch.float16 to torch.float32
+        output = output.float()
         
         #depth anything has no feature extraction weight
         if return_raw:
