@@ -1,5 +1,5 @@
 import os
-from models.depth_hints.networks import ResnetEncoder, DepthDecoder
+from models.manydepth.networks import ResnetEncoder, DepthDecoder
 import torch
 import torchvision.transforms as T
 
@@ -10,24 +10,34 @@ import numpy as np
 
 from models.model_mde import ModelMDE
 
-class DepthHints(ModelMDE):
+class ManyDepth(ModelMDE):
     def __init__(self, model_path, device=None, **kwargs):
-        self.encoder = ResnetEncoder(50, False)
+        self.encoder = ResnetEncoder(18, False)
         self.depth_decoder = DepthDecoder(self.encoder.num_ch_enc, scales=range(4))
         self.device = device
         #self.model, self.input_height, self.input_width = self.load(model_path, device)
-        super(DepthHints, self).__init__(device=self.device, model_path=model_path, **kwargs)
+        super(ManyDepth, self).__init__(device=self.device, model_path=model_path, **kwargs)
     
     def load(
         self, model_path=None, device=None, **kwargs
     ):
+        """
+        encoder_path = os.path.join(model_path, "encoder.pth")
+        depth_decoder_path = os.path.join(model_path, "depth.pth")
+        encoder_class = ResnetEncoder
+        encoder_dict = torch.load(encoder_path)
+        HEIGHT, WIDTH = encoder_dict['height'], encoder_dict['width']
+        """
+        
+        
         encoder = self.encoder
         depth_decoder = self.depth_decoder
         
         encoder_path = os.path.join(model_path, "encoder.pth")
         loaded_dict_enc = torch.load(encoder_path, map_location=device)
-        feed_height = loaded_dict_enc['height']
-        feed_width = loaded_dict_enc['width']
+
+        feed_height = 192#loaded_dict_enc['height']
+        feed_width = 640#loaded_dict_enc['width']
         filtered_dict_enc = {k: v for k, v in loaded_dict_enc.items() if k in encoder.state_dict()}
         encoder.load_state_dict(filtered_dict_enc)
         encoder.to(device)
@@ -44,7 +54,7 @@ class DepthHints(ModelMDE):
             )
         
         return model, feed_height, feed_width
-    
+        
     def predict(self, img, return_raw=False):
         #preprocess
         if not torch.is_tensor(img):
@@ -60,16 +70,13 @@ class DepthHints(ModelMDE):
         if return_raw:
             features = self.encoder(img_tensor)
             output = self.depth_decoder(features)
-            disp = output[("disp", 0)]
-            output[("disp", 0)] = (disp - disp.min()) / (disp.max() - disp.min())
-            
+            #print(output[("disp", 0)].dtype)
             return features, output
         
         disparity = self.model(img_tensor)[("disp", 0)]
         disp_resized = torch.nn.functional.interpolate(
             disparity, (H, W), mode="bilinear", align_corners=False
         )
-        
         return disp_resized
         
     def visualize(self, prediction):
