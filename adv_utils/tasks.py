@@ -79,7 +79,6 @@ class AdvPatchTask:
         
             _, adv_output = self.mde_model.predict(final_images, return_raw=True)
             
-            #print("forward eval")
             #print(patch_masks.shape)
             #print(torch.unique(patch_masks))
             #print(torch.unique(patch_masks).numel())
@@ -228,12 +227,12 @@ class AdvPatchTask:
         predicted_benign_disp = []
         predicted_adv_disp = []
         gt_depths = []
-        vehicle_masks = []
+        object_masks = []
         
         with torch.no_grad():
             for batch in eval_dataset:
-                vehicle_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, mode = 'eval')
-                vehicle_mask = vehicle_mask.detach().cpu()[:, 0].numpy()
+                object_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, mode = 'eval')
+                object_mask = object_mask.detach().cpu()[:, 0].numpy()
                 #print(torch.mean(predicted_disp[("disp", 0)]))
                 
                 #print(predicted_disp[("disp", 0)].shape)
@@ -262,13 +261,13 @@ class AdvPatchTask:
                 gt_depths.append(batch['depth_gt'].detach().cpu()[:, 0].numpy())
                 predicted_benign_disp.append(predicted_benign_disp_scaled)
                 predicted_adv_disp.append(predicted_adv_disp_scaled)
-                vehicle_masks.append(vehicle_mask)
+                object_masks.append(object_mask)
                 
         
         predicted_benign_disp = np.concatenate(predicted_benign_disp)
         predicted_adv_disp = np.concatenate(predicted_adv_disp)
         gt_depths = np.concatenate(gt_depths)
-        vehicle_masks = np.concatenate(vehicle_masks)
+        object_masks = np.concatenate(object_masks)
         #print(predicted_depths)
         #print(predicted_depths.shape)
         #print(gt_depths.shape)
@@ -284,8 +283,6 @@ class AdvPatchTask:
             gt_height, gt_width = gt_depth.shape[:2]
 
             pred_disp = predicted_benign_disp[i]
-            print(pred_disp.shape)
-            print(gt_width, gt_height)
             pred_disp = cv2.resize(pred_disp, (gt_width, gt_height))
             pred_depth = 1 / pred_disp
 
@@ -301,10 +298,10 @@ class AdvPatchTask:
             mask = np.logical_and(mask, crop_mask)
 
             #evaluasi yang hanya ditempel patch
-            vehicle_masks_resized =  cv2.resize(
-                vehicle_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
+            object_masks_resized =  cv2.resize(
+                object_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
             ).astype(bool)
-            mask = np.logical_and(mask, vehicle_masks_resized)
+            mask = np.logical_and(mask, object_masks_resized)
             
             pred_depth = pred_depth[mask]
             gt_depth = gt_depth[mask]
@@ -326,11 +323,11 @@ class AdvPatchTask:
             
             ratios_1 = np.array(ratios)
             med = np.median(ratios_1)
-            print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios_1 / med)))
+            #print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios_1 / med)))
 
         mean_errors_benign = np.array(errors_benign).mean(0)
         
-        print("Fase Benign")
+        print("Fase Benign (Ground truth vs prediksi benign)")
         print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
         print(("&{: 8.3f}  " * 7).format(*mean_errors_benign.tolist()) + "\\\\")
         print("\n-> Done!")
@@ -354,10 +351,10 @@ class AdvPatchTask:
             mask = np.logical_and(mask, crop_mask)
 
             #evaluasi yang hanya ditempel patch
-            vehicle_masks_resized =  cv2.resize(
-                vehicle_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
+            object_masks_resized =  cv2.resize(
+                object_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
             ).astype(bool)
-            mask = np.logical_and(mask, vehicle_masks_resized)
+            mask = np.logical_and(mask, object_masks_resized)
             
             pred_depth = pred_depth[mask]
             gt_depth = gt_depth[mask]
@@ -377,13 +374,72 @@ class AdvPatchTask:
             
             ratios_1 = np.array(ratios)
             med = np.median(ratios_1)
-            print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios_1 / med)))
+            #print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios_1 / med)))
 
         mean_errors_adv = np.array(errors_adv).mean(0)
 
-        print("Fase Adversarial")
+        print("Fase Adversarial (Ground truth vs prediksi adversarial)")
         print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
         print(("&{: 8.3f}  " * 7).format(*mean_errors_adv.tolist()) + "\\\\")
+        print("\n-> Done!")
+
+        asr = []
+        #ASR
+        for i in range(predicted_adv_disp.shape[0]):
+
+            gt_depth = gt_depths[i]
+            gt_height, gt_width = gt_depth.shape[:2]
+
+            pred_adv_disp = predicted_adv_disp[i]
+            pred_adv_disp = cv2.resize(pred_adv_disp, (gt_width, gt_height))
+            pred_adv_depth = 1 / pred_adv_disp
+            
+            pred_benign_disp = predicted_benign_disp[i]
+            pred_benign_disp = cv2.resize(pred_benign_disp, (gt_width, gt_height))
+            pred_benign_depth = 1 / pred_benign_disp
+
+            mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
+
+            crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
+                            0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
+            crop_mask = np.zeros(mask.shape)
+            crop_mask[crop[0]:crop[1], crop[2]:crop[3]] = 1
+            mask = np.logical_and(mask, crop_mask)
+
+            #evaluasi yang hanya ditempel patch
+            object_masks_resized =  cv2.resize(
+                object_masks[i].astype(np.uint8), (gt_width, gt_height), interpolation=cv2.INTER_NEAREST
+            ).astype(bool)
+            mask = np.logical_and(mask, object_masks_resized)
+            
+            pred_adv_depth = pred_adv_depth[mask]
+            pred_benign_depth = pred_benign_depth[mask]
+            gt_depth = gt_depth[mask]
+
+            pred_adv_depth *= float(1)
+            ratio_adv = np.median(gt_depth) / np.median(pred_adv_depth)
+            pred_adv_depth *= ratio_adv
+            
+            pred_benign_depth *= float(1)
+            ratio_benign = np.median(gt_depth) / np.median(pred_benign_depth)
+            pred_benign_depth *= ratio_benign
+
+            pred_adv_depth[pred_adv_depth < MIN_DEPTH] = MIN_DEPTH
+            pred_adv_depth[pred_adv_depth > MAX_DEPTH] = MAX_DEPTH
+            
+            pred_benign_depth[pred_benign_depth < MIN_DEPTH] = MIN_DEPTH
+            pred_benign_depth[pred_benign_depth > MAX_DEPTH] = MAX_DEPTH
+
+            asr.append(compute_errors(pred_adv_depth, pred_benign_depth))
+            
+            #print(np.mean(gt_depth))
+            #print(errors_adv[i])
+
+        mean_errors_asr = np.array(asr).mean(0)
+
+        print("Attack Success Rate (didefinisikan sebagai 1 - a1), prediksi benign vs adversarial")
+        print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
+        print(("&{: 8.3f}  " * 7).format(*mean_errors_asr.tolist()) + "\\\\")
         print("\n-> Done!")
         
     
