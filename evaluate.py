@@ -10,13 +10,29 @@ from utils.data_loader import load_patch_from_img
 from models import load_models
 from PIL import Image
 
+import time
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--config_path", default='config.yml')
+parser.add_argument("--model_name", type=str)
+parser.add_argument("--model_path", type=str)
+parser.add_argument("--patch_path", type=str)
+parser.add_argument("--eval_target_size", type=float)
 
 def main():
     #arg parser and file config
     args = parser.parse_args()
     cfg = load_yaml(args.config_path)
+    
+    #override .yaml
+    if args.model_name: 
+        cfg["model"]["model_name"] = args.model_name
+    if args.model_path: 
+        cfg["model"]["model_path"] = args.model_path
+    if args.patch_path: 
+        cfg["patch"]["path"] = args.patch_path
+    if args.eval_target_size: 
+        cfg["patch"]["eval_target_size"] = args.eval_target_size
     
     #initialize device
     device = torch.device(cfg['device'])
@@ -33,7 +49,7 @@ def main():
     eval_loader = torch.utils.data.DataLoader(
         dataset=eval_dataset,
         batch_size=cfg['dataset']['batch_size'],
-        shuffle=True,
+        shuffle=False,
         num_workers=cfg['dataset']['num_workers'],
         pin_memory=True,
         drop_last=False
@@ -51,28 +67,22 @@ def main():
         mde_model=initialize_model,
         adv_patch=adv_patch_cpu,
         device=device,
+        target_size=cfg['patch']['eval_target_size']
     )
     
     #evaluate patch
-    adv_patch_instance.visualize_adv(
+    #adv_patch_instance.visualize_adv(
+    #    eval_dataset=eval_loader
+    #)
+    
+    adv_patch_instance.evaluate(
         eval_dataset=eval_loader
     )
     
-    #adv_patch_instance.evaluate(
-    #    eval_dataset=eval_loader
-    #)
-    """
-    adv_patch_trainer.train(
-        epochs=cfg['hyperparameter']['num_epoch'],
-        train_dataset=train_loader,
-        writer=writer,
-        log_interval=cfg['log']['log_interval'],
-        patch_export_path=cfg["log"]["patch_checkpoint_dir"]
-    )
-    """
-    
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    print(time.time() - start_time)
     
     
     
