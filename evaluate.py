@@ -17,7 +17,9 @@ parser.add_argument("--config_path", default='config.yml')
 parser.add_argument("--model_name", type=str)
 parser.add_argument("--model_path", type=str)
 parser.add_argument("--patch_path", type=str)
+parser.add_argument("--eval_list_path", type=str)
 parser.add_argument("--eval_target_size", type=float)
+parser.add_argument("--quadrant", type=int)
 
 def main():
     #arg parser and file config
@@ -31,8 +33,12 @@ def main():
         cfg["model"]["model_path"] = args.model_path
     if args.patch_path: 
         cfg["patch"]["path"] = args.patch_path
+    if args.eval_list_path: 
+        cfg["lists"]["eval_list"] = args.eval_list_path
     if args.eval_target_size: 
         cfg["patch"]["eval_target_size"] = args.eval_target_size
+    if args.quadrant: 
+        cfg["patch"]["quadrant"] = args.quadrant
     
     #initialize device
     device = torch.device(cfg['device'])
@@ -71,12 +77,14 @@ def main():
     )
     
     #evaluate patch
-    #adv_patch_instance.visualize_adv(
-    #    eval_dataset=eval_loader
-    #)
+    adv_patch_instance.visualize_adv(
+        eval_dataset=eval_loader,
+        patch_quadrant=cfg['patch']['quadrant']
+    )
     
     adv_patch_instance.evaluate(
-        eval_dataset=eval_loader
+        eval_dataset=eval_loader,
+        patch_quadrant=cfg['patch']['quadrant']
     )
     
 if __name__ == "__main__":

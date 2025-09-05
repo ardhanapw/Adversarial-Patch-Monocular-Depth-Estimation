@@ -14,6 +14,7 @@ def apply_patch(augmented_patch: torch.Tensor,
                 rgb: torch.Tensor,
                 target_size:float,
                 current_batch_size: int,
+                patch_quadrant: int,
                 bboxes: torch.Tensor,
                 mask: torch.Tensor = None,
 ):
@@ -47,6 +48,8 @@ def apply_patch(augmented_patch: torch.Tensor,
         target_size=target_size,
         do_rotate=False,
         train=True,
+        quadrant_idx=patch_quadrant,
+        is_quadrant=False
     )
 
     final_images = applier(rgb, patch_t, mask_t)
@@ -126,7 +129,7 @@ class PatchTransformer(nn.Module):
         h = torch.cat([h, torch.ones(B, 1, device=src.device)], dim=1)
         return h.view(B, 3, 3)
 
-    def forward(self, patch, mask, batch_size, img_size, bboxes, target_size, do_rotate=True, do_perspective=False, train=True):
+    def forward(self, patch, mask, batch_size, img_size, bboxes, target_size, do_rotate=True, do_perspective=False, train=True, quadrant_idx=0, is_quadrant=False):
         device = patch.device
         # Determine size of padding
         #print("Patch Transformer")
@@ -202,32 +205,50 @@ class PatchTransformer(nn.Module):
         x2 = (bboxes[:, 2] * img_width)
         y2 = (bboxes[:, 3] * img_height)
         
-        #print("patch transformer too")
-        #print(x1, y1, x2, y2)
-        #print((y2-y1) * (x2-x1))
-        
         x_center = (x1 + x2) / 2.0
         y_center = (y1 + y2) / 2.0
         
         bbox_width = (x2 - x1).clamp(min=1.0)
         bbox_height = (y2 - y1).clamp(min=1.0)
-        #print(bbox_width, bbox_height)
-        #print(target_size)
+
+        if is_quadrant:
+            half_width = bbox_width / 2
+            half_height = bbox_height / 2
+            quadrant_centers = torch.stack([
+                # Top-left (0)
+                x1 + half_width / 2,
+                y1 + half_height / 2,
+                # Top-right (1)
+                x2 - half_width / 2,
+                y1 + half_height / 2,
+                # Bottom-left (2)
+                x1 + half_width / 2,
+                y2 - half_height / 2,
+                # Bottom-right (3)
+                x2 - half_width / 2,
+                y2 - half_height / 2,
+            ], dim=1).view(batch_size, 4, 2)
+            
+            quadrant_idx = torch.full((batch_size,), quadrant_idx, device=device, dtype=torch.long)
+            
+            selected_centers = quadrant_centers[torch.arange(batch_size), quadrant_idx]
+            x_center = selected_centers[:, 0]
+            y_center = selected_centers[:, 1]
         
         #maximum patch scaling possible in the bounding box
         if target_size is None or target_size == 'None':
             target_size = random.uniform(0, 1) #torch.rand(0, 1).to(device)
-
-        side = torch.sqrt(target_size * bbox_width * bbox_height)
-        max_side = torch.min(bbox_width, bbox_height)
-        side = torch.min(side, max_side)
-        scale = side/patch.size(-1)
-        ratio = ((scale * patch.size(-1)) ** 2)/(bbox_width*bbox_height)
-        #print("ratio")
-        #print(ratio)
-        #print(bbox_width.shape)
-        #print(side)
-        #print(target_size*bbox_width*bbox_height)
+        
+        if is_quadrant:
+            max_side_quadrant = torch.min(half_width, half_height)
+            side = torch.sqrt(target_size * bbox_width * bbox_height)
+            side = torch.min(side, max_side_quadrant)
+            scale = side / patch.size(-1)
+        else:
+            side = torch.sqrt(target_size * bbox_width * bbox_height)
+            max_side = torch.min(bbox_width, bbox_height)
+            side = torch.min(side, max_side)
+            scale = side/patch.size(-1)
 
         
         x_off = x_center - (img_width / 2.0)
@@ -239,14 +260,28 @@ class PatchTransformer(nn.Module):
 
         
         #ensure placement is within bbox
-        bbox_mask = torch.zeros((batch_size, 1, img_height, img_width), device=device, dtype=mask_batch.dtype)
-        x_min = x1.floor().clamp(0, img_width - 1).int()
-        y_min = y1.floor().clamp(0, img_height - 1).int()
-        x_max = x2.ceil().clamp(1, img_width).int()
-        y_max = y2.ceil().clamp(1, img_height).int()
-        
-        for b in range(batch_size):
-            bbox_mask[b, 0, y_min[b]:y_max[b], x_min[b]:x_max[b]] = 1.0
+        if is_quadrant:
+            quadrant_x1 = torch.where(quadrant_idx % 2 == 0, x1, x1 + half_width)
+            quadrant_y1 = torch.where(quadrant_idx < 2, y1, y1 + half_height)
+            quadrant_x2 = quadrant_x1 + half_width
+            quadrant_y2 = quadrant_y1 + half_height
+
+            bbox_mask = torch.zeros((batch_size, 1, img_height, img_width), device=device, dtype=mask_batch.dtype)
+            for b in range(batch_size):
+                x_min = int(quadrant_x1[b].clamp(0, img_width - 1))
+                y_min = int(quadrant_y1[b].clamp(0, img_height - 1))
+                x_max = int(quadrant_x2[b].clamp(1, img_width))
+                y_max = int(quadrant_y2[b].clamp(1, img_height))
+                bbox_mask[b, 0, y_min:y_max, x_min:x_max] = 1.0
+        else:
+            bbox_mask = torch.zeros((batch_size, 1, img_height, img_width), device=device, dtype=mask_batch.dtype)
+            x_min = x1.floor().clamp(0, img_width - 1).int()
+            y_min = y1.floor().clamp(0, img_height - 1).int()
+            x_max = x2.ceil().clamp(1, img_width).int()
+            y_max = y2.ceil().clamp(1, img_height).int()
+            
+            for b in range(batch_size):
+                bbox_mask[b, 0, y_min[b]:y_max[b], x_min[b]:x_max[b]] = 1.0
         
         """
         # Resize
@@ -266,7 +301,6 @@ class PatchTransformer(nn.Module):
         rotation[:, 1, 1] = cos * scale
         rotation[:, 0, 2] = center[:, 0] * (1 - cos*scale) - center[:, 1] * (sin*scale)
         rotation[:, 1, 2] = center[:, 1] * (1 - cos*scale) + center[:, 0] * (sin*scale)
-
         """
         if rand_loc:
             x_off = torch.FloatTensor(1).uniform_(self.min_x_off, self.max_x_off).to(device) / scale

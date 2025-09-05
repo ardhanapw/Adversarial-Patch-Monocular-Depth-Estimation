@@ -5,8 +5,8 @@ dataset:
   num_workers: 2
 
 model:
-  model_name: depth_anything
-  model_path: weights/depth_anything/vits
+  model_name: monodepth2
+  model_path: weights/monodepth2/mono_640x192
 
 log:
   comet_ml_credentials: comet_ml_cred.json
@@ -20,8 +20,9 @@ lists:
   eval_list: lists/car_dataset_test_12.txt
 
 patch:
-  path: patch-2256-depthanything-vits-far-tv.jpg
-  eval_target_size: 0.02
+  path: patches/monodepth2.jpg
+  eval_target_size: 0.25
+  quadrant: 3
   target_disp_sigmoid: 0.999999
   resolution: 256
   patch_augmentation:

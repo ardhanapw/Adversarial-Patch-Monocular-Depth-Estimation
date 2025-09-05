@@ -47,7 +47,8 @@ class AdvPatchTask:
         self,
         batch,
         adv_patch=None,
-        mode='eval' #can be eval or inspect
+        mode='eval', #can be eval or inspect
+        patch_quadrant=0
     ):
         images = batch[("color", 0, 0)].to(self.device)
         xyxy = batch["label"].to(self.device)
@@ -74,7 +75,7 @@ class AdvPatchTask:
         if adv_patch is not None:
             #apply patch
             final_images, patch_masks = apply_patch(
-                adv_patch, images, self.target_size, current_batch_size, xyxy
+                adv_patch, images, self.target_size, current_batch_size, patch_quadrant, xyxy
             )
         
             _, adv_output = self.mde_model.predict(final_images, return_raw=True)
@@ -218,7 +219,8 @@ class AdvPatchTask:
     
     def evaluate(
         self,
-        eval_dataset
+        eval_dataset,
+        patch_quadrant
     ):
         #min and max depth of KITTI dataset
         MIN_DEPTH = 1e-3
@@ -231,7 +233,7 @@ class AdvPatchTask:
         
         with torch.no_grad():
             for batch in eval_dataset:
-                object_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, mode = 'eval')
+                object_mask, benign_disp, adv_disp = self.forward_eval(batch, self.adv_patch, 'eval', patch_quadrant)
                 object_mask = object_mask.detach().cpu()[:, 0].numpy()
                 #print(torch.mean(predicted_disp[("disp", 0)]))
                 
@@ -393,15 +395,16 @@ class AdvPatchTask:
     def visualize_adv(
         self,
         eval_dataset,
+        patch_quadrant
         ):
 
         for i_batch, samples in enumerate(eval_dataset):
             imgs = samples[("color", 0, 0)]
             
             if self.adv_patch is None:
-                predictions = self.forward_eval(samples, self.adv_patch, mode='inspect')[("disp", 0)]
+                predictions = self.forward_eval(samples, self.adv_patch, 'inspect', patch_quadrant)[("disp", 0)]
             else:
-                imgs, outputs = self.forward_eval(samples, self.adv_patch, mode='inspect')
+                imgs, outputs = self.forward_eval(samples, self.adv_patch, 'inspect', patch_quadrant)
                 predictions = outputs[("disp", 0)]
                 #print(torch.min(predictions), torch.max(predictions), torch.mean(predictions), torch.median(predictions))
                 #print((predictions>0).sum(dim=(1,2,3)))
