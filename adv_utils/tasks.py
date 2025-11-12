@@ -304,7 +304,7 @@ class AdvPatchTask:
             
             #adv vs benign
             abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_errors(pred_adv_depth, pred_benign_depth)
-            asr.append((abs_rel, (1-a1)*100, (1-a2)*100, (1-a3)*100))
+            asr.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3))
             mean_depth_per_patch.append(np.mean(gt_depth))
             
             #median scaling prediksi benign
@@ -316,8 +316,9 @@ class AdvPatchTask:
             pred_benign_depth[pred_benign_depth < MIN_DEPTH] = MIN_DEPTH
             pred_benign_depth[pred_benign_depth > MAX_DEPTH] = MAX_DEPTH
             abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_errors(gt_depth, pred_benign_depth)
-            errors_benign.append((abs_rel, a1))
+            errors_benign.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3))
             
+            """
             #median scaling prediksi adversarial
             pred_adv_depth *= float(1)
             ratio = np.median(gt_depth) / np.median(pred_adv_depth)
@@ -327,8 +328,9 @@ class AdvPatchTask:
             pred_adv_depth[pred_adv_depth < MIN_DEPTH] = MIN_DEPTH
             pred_adv_depth[pred_adv_depth > MAX_DEPTH] = MAX_DEPTH
             abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_errors(gt_depth, pred_adv_depth)
-            errors_adv.append((abs_rel, a1))
-        
+            errors_adv.append((abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3))
+            """
+
         #print(errors_benign)
         #print(errors_adv)
         #print(asr)
@@ -336,32 +338,23 @@ class AdvPatchTask:
         #print([el[1] for el in asr])
         os.makedirs('./metrics', exist_ok=True)
         output_path_mean_gt_depth = os.path.join(os.path.abspath('./metrics'), "mean_depth_per_patch.npz")
-        output_path_asr = os.path.join(os.path.abspath('./metrics'), "asr.npz")
+        output_path_attacked = os.path.join(os.path.abspath('./metrics'), "attacked_metrics.npz")
         np.savez_compressed(output_path_mean_gt_depth, data=np.array(mean_depth_per_patch))
-        np.savez_compressed(output_path_asr, data=np.array(asr))
+        np.savez_compressed(output_path_attacked, data=np.array(asr))
 
-        mean_absrel_benign = np.array(errors_benign).mean(0)
-        mean_absrel_adv = np.array(errors_adv).mean(0)
-        mean_errors_asr = np.array(asr).mean(0)
+        mean_metrics_benign = np.array(errors_benign).mean(0)
+        #mean_metrics_adv = np.array(errors_adv).mean(0)
+        mean_metrics_adv = np.array(asr).mean(0)
         
-        
-        print("Fase Benign (Ground truth vs prediksi adversarial)")
-        print("\n  " + ("{:>8} | " * 1).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
-        print(("&{: 8.3f}  " * 1).format(*mean_absrel_benign.tolist()) + "\\\\")
+        print("Fase Benign (Ground truth vs prediksi benign)")
+        print("\n  " + ("{:>8} | " * 5).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1 (%)"))
+        print(("&{: 8.3f}  " * 5).format(*mean_metrics_benign.tolist()) + "\\\\")
         print("\n")
         
-        """
         print("Fase Adversarial (Ground truth vs prediksi adversarial)")
-        print("\n  " + ("{:>8} | " * 1).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
-        print(("&{: 8.3f}  " * 1).format(*mean_absrel_adv.tolist()) + "\\\\")
+        print("\n  " + ("{:>8} | " * 5).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1 (%)"))
+        print(("&{: 8.3f}  " * 5).format(*mean_metrics_adv.tolist()) + "\\\\")
         print("\n")
-        """
-        
-        print("Attack Success Rate (didefinisikan sebagai 1 - thresh), prediksi benign vs adversarial")
-        print("\n  " + ("{:>8} | " * 2).format("abs_rel", "1-a1 (%)", "1-a2 (%)", "1-a3 (%)"))
-        print(("&{: 8.3f}  " * 2).format(*mean_errors_asr.tolist()) + "\\\\")
-        print("\n-> Done!")
-        
     
     def inference_test(
         self,

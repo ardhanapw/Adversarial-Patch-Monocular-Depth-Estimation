@@ -39,6 +39,11 @@ def main():
         cfg["patch"]["eval_target_size"] = args.eval_target_size
     if args.quadrant: 
         cfg["patch"]["quadrant"] = args.quadrant
+
+    print("model: ", cfg["model"]["model_name"])
+    print("model path: ", cfg["model"]["model_path"])
+    print("patch: ", cfg["patch"]["path"])
+    print("patch size: ", cfg["patch"]["eval_target_size"])
     
     #initialize device
     device = torch.device(cfg['device'])
@@ -77,10 +82,12 @@ def main():
     )
     
     #evaluate patch
+    """
     adv_patch_instance.visualize_adv(
         eval_dataset=eval_loader,
         patch_quadrant=cfg['patch']['quadrant']
     )
+    """
     
     adv_patch_instance.evaluate(
         eval_dataset=eval_loader,
@@ -91,6 +98,3 @@ if __name__ == "__main__":
     start_time = time.time()
     main()
     print(time.time() - start_time)
-    
-    
-    

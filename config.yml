@@ -1,7 +1,7 @@
 dataset:
-  eval_path: datasets/KITTI_TA_car_test_split
+  eval_path: datasets/content/KITTI_TA_car_test_split
   train_path: datasets/kitti_test/images
-  batch_size: 4
+  batch_size: 10
   num_workers: 2
 
 model:
@@ -17,7 +17,7 @@ log:
 lists:
   30_rgb_triplets_path: lists/printablebottom10.txt 
   train_list: lists/car_dataset_train.txt
-  eval_list: lists/car_dataset_test_12.txt
+  eval_list: lists/car_dataset_test.txt
 
 patch:
   path: patches/monodepth2.jpg
