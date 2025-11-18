@@ -303,8 +303,8 @@ class AdvPatchTask:
                 continue
             
             #adv vs benign
-            abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_errors(pred_adv_depth, pred_benign_depth)
-            asr.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3))
+            abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3, rel_err = compute_errors(pred_adv_depth, pred_benign_depth)
+            asr.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3, rel_err))
             mean_depth_per_patch.append(np.mean(gt_depth))
             
             #median scaling prediksi benign
@@ -315,8 +315,8 @@ class AdvPatchTask:
 
             pred_benign_depth[pred_benign_depth < MIN_DEPTH] = MIN_DEPTH
             pred_benign_depth[pred_benign_depth > MAX_DEPTH] = MAX_DEPTH
-            abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_errors(gt_depth, pred_benign_depth)
-            errors_benign.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3))
+            abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3, rel_err = compute_errors(gt_depth, pred_benign_depth)
+            errors_benign.append((abs_rel, sq_rel, rmse, rmse_log, a1*100, a2, a3, rel_err))
             
             """
             #median scaling prediksi adversarial
